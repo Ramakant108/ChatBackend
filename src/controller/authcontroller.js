@@ -1,7 +1,23 @@
 import cloudinary from "../helper/cloudnary.js";
 import { generatejwttoken } from "../helper/utils.js"
 import User from "../model/User.js"
-import bcrypt from "bcrypt"
+import crypto from 'crypto';
+import { promisify } from 'util';
+
+// Replace bcrypt.hash with this function
+const hashPassword = async (password) => {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = await promisify(crypto.pbkdf2)(password, salt, 1000, 64, 'sha512');
+    return salt + ':' + hash.toString('hex');
+};
+
+// Replace bcrypt.compare with this function
+const verifyPassword = async (password, hashedPassword) => {
+    const [salt, hash] = hashedPassword.split(':');
+    const hashVerify = await promisify(crypto.pbkdf2)(password, salt, 1000, 64, 'sha512');
+    return hash === hashVerify.toString('hex');
+};
+
 export const login=async(req,res)=>{
     const {email,password}=req.body;
 
@@ -15,9 +31,9 @@ export const login=async(req,res)=>{
 
         if(!user) return res.status(400).json({message:"User not found"});
 
-        const iscorrect=await bcrypt.compare(password,user.password);
+        const isCorrect = await verifyPassword(password, user.password);
 
-        if(!iscorrect) return res.status(400).json({message:"invalid password"});
+        if(!isCorrect) return res.status(400).json({message:"invalid password"});
 
         generatejwttoken(user._id,res);
 
@@ -57,8 +73,7 @@ export const signup=async(req,res)=>{
         const user=await User.findOne({email});
         if(user) return res.status(400).json({message:"Email alredy exist"});
 
-        const salt =await bcrypt.genSalt(10);
-        const hasedPassword=await bcrypt.hash(password,salt);
+        const hashedPassword = await hashPassword(password);
 
         const newUser=new User({
             email,
